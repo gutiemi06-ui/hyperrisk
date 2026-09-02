@@ -1,5 +1,7 @@
+import asyncio
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import structlog
@@ -15,17 +17,48 @@ from .explainer import template_explanation
 from .risk import calculate_portfolio_risk
 from .schemas import AccountState, StressResult, StressScenario
 from .stress import run_stress
+from .websocket import ResilientWebSocket
 
 settings = get_settings()
 log = structlog.get_logger()
+market_stream_cache: dict[str, object] = {}
+
+
+async def handle_market_message(message: dict[str, object]) -> None:
+    """Keep only the freshest public feed snapshot; PostgreSQL sampling is a separate concern."""
+    channel = str(message.get("channel", "unknown"))
+    market_stream_cache[channel] = message.get("data")
+    market_stream_cache["last_message_at"] = datetime.now(UTC)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(application: FastAPI):
     structlog.configure(processors=[structlog.contextvars.merge_contextvars, structlog.processors.TimeStamper(fmt="iso", utc=True), structlog.processors.add_log_level, structlog.processors.JSONRenderer()])
     log.info("service_started", environment=settings.app_env)
-    yield
-    log.info("service_stopped")
+    stop = asyncio.Event()
+    stream = ResilientWebSocket(
+        settings.hyperliquid_ws_url,
+        [
+            {"type": "allMids"},
+            {"type": "l2Book", "coin": "BTC"},
+            {"type": "trades", "coin": "BTC"},
+            {"type": "activeAssetCtx", "coin": "BTC"},
+        ],
+    )
+    task = (
+        asyncio.create_task(stream.run(handle_market_message, stop))
+        if settings.enable_live_stream
+        else None
+    )
+    application.state.market_stream = stream
+    try:
+        yield
+    finally:
+        stop.set()
+        if task:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        log.info("service_stopped")
 
 
 app = FastAPI(title="HyperRisk API", version="0.1.0", description="Read-only portfolio risk and market intelligence for Hyperliquid.", lifespan=lifespan)
@@ -86,6 +119,23 @@ async def markets() -> object:
         return await client.market_contexts()
     except HyperliquidError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/stream/status", tags=["markets"])
+async def stream_status(request: Request) -> dict[str, object]:
+    stream: ResilientWebSocket = request.app.state.market_stream
+    last_message = stream.status.last_message_at
+    age_seconds = (datetime.now(UTC) - last_message).total_seconds() if last_message else None
+    return {
+        "state": stream.status.state if settings.enable_live_stream else "disabled",
+        "reconnect_attempts": stream.status.reconnect_attempts,
+        "malformed_messages": stream.status.malformed_messages,
+        "dropped_messages": stream.status.dropped_messages,
+        "last_message_at": last_message,
+        "age_seconds": round(age_seconds, 3) if age_seconds is not None else None,
+        "stale": age_seconds is None or age_seconds > settings.stale_after_seconds,
+        "channels": sorted(key for key in market_stream_cache if key != "last_message_at"),
+    }
 
 
 @app.post("/api/v1/stress", response_model=StressResult, tags=["risk"])

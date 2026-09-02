@@ -32,6 +32,10 @@ Reads a public wallet from Hyperliquid `clearinghouseState`. `wallet` must match
 
 Proxies the official `metaAndAssetCtxs` info response with bounded retry behavior. No inferred values are added.
 
+### `GET /api/v1/stream/status`
+
+Reports the background public WebSocket consumer state, reconnect attempts, malformed and dropped frame counts, last-message age, stale flag, and active channels. The service subscribes to `allMids`, BTC `l2Book`, BTC `trades`, and BTC `activeAssetCtx` and always prefers the freshest frame under backpressure.
+
 ### `GET /api/v1/replay`
 
 Returns fixture id, deterministic flag, and 20 frames containing `offset_ms`, `coin`, `bid`, `ask`, `spread`, `imbalance`, `bid_depth`, `ask_depth`, and optional `event`.

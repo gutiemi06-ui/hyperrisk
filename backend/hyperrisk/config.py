@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     hyperliquid_ws_url: str = "wss://api.hyperliquid.xyz/ws"
     request_timeout_seconds: float = Field(default=5.0, ge=1, le=30)
     stale_after_seconds: int = Field(default=10, ge=2, le=120)
+    enable_live_stream: bool = True
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
     log_level: str = "INFO"
     openai_api_key: str | None = None

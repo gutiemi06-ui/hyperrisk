@@ -15,6 +15,15 @@ def test_health_readiness_and_demo_workflow() -> None:
         assert payload["risk"]["effective_leverage"] == "2.6802"
         assert payload["alerts"]
         assert payload["explanation"]["source"] == "template"
+        stream = client.get("/api/v1/stream/status")
+        assert stream.status_code == 200
+        assert set(stream.json()) >= {
+            "state",
+            "reconnect_attempts",
+            "malformed_messages",
+            "dropped_messages",
+            "stale",
+        }
 
 
 def test_invalid_wallet_is_rejected_before_upstream_call() -> None:
