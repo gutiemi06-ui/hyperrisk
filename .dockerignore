@@ -1,0 +1,12 @@
+node_modules
+.venv
+.git
+.next
+.vinext
+dist
+out
+coverage
+playwright-report
+test-results
+.env
+*.log
