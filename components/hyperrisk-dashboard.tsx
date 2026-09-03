@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -733,6 +733,7 @@ function DetailView({ active }: { active: string }) {
 
 export function HyperRiskDashboard() {
   const [active, setActive] = useState('Overview');
+  const shellRef = useRef<HTMLDivElement>(null);
   const [wallet, setWallet] = useState('0x7a3E...91C2');
   const [connection, setConnection] = useState<
     'fixture' | 'loading' | 'live' | 'error'
@@ -781,6 +782,14 @@ export function HyperRiskDashboard() {
     }
   };
   useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    shell.dataset.hydrated = 'true';
+    return () => {
+      delete shell.dataset.hydrated;
+    };
+  }, []);
+  useEffect(() => {
     type ToolContext = {
       registerTool: (
         tool: Record<string, unknown>,
@@ -821,7 +830,7 @@ export function HyperRiskDashboard() {
   }, []);
 
   return (
-    <div className="terminal-shell">
+    <div ref={shellRef} className="terminal-shell" data-hydrated="false">
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark">
